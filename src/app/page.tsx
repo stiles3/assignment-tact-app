@@ -1,14 +1,24 @@
 "use client";
 import React, { useEffect, useState } from "react";
-import { Plus, Pencil, Trash2, Eye } from "lucide-react";
+import {
+  Plus,
+  Pencil,
+  Trash2,
+  Eye,
+  ChevronLeft,
+  ChevronRight,
+} from "lucide-react";
 import { Button } from "@/components/Buttons";
 import Main from "@/layout/main";
 import { useAuth } from "@/providers/AuthContext";
-import { useDepartments } from "@/hooks/department/useDepartment";
-import { useQuery } from "@apollo/client";
-import { LOAD_DEPARTMENTS } from "@/hooks/department/queries";
+import { useMutation, useQuery } from "@apollo/client";
+import {
+  DELETE_DEPARTMENT,
+  LOAD_DEPARTMENTS,
+} from "@/hooks/department/queries";
 import { useModal } from "@/providers/ModalProvider";
 import { ModalId } from "@/providers/ModalWrapper";
+import { useRouter } from "next/navigation";
 
 interface Department {
   id: string;
@@ -17,8 +27,8 @@ interface Department {
 }
 
 const DashboardPage: React.FC = () => {
-  const { user, token } = useAuth();
-  const {} = useDepartments();
+  const router = useRouter();
+  const { user } = useAuth();
   const { showModal } = useModal();
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(10);
@@ -27,29 +37,70 @@ const DashboardPage: React.FC = () => {
     error: loadError,
     data,
     refetch,
+    fetchMore,
   } = useQuery(LOAD_DEPARTMENTS, {
     variables: { pagination: { page, limit } },
   });
-  const [departments, setDepartments] = useState<Department[]>([
-    { id: "1", name: "Engineering", subdepartments: 3 },
-    { id: "2", name: "Marketing", subdepartments: 2 },
-    { id: "3", name: "Sales", subdepartments: 4 },
-    { id: "4", name: "Human Resources", subdepartments: 2 },
-  ]);
 
-  const handleEdit = (id: string) => {
-    console.log("Edit department:", id);
-  };
+  const [deleteDepartment, { loading: deleteLoading }] =
+    useMutation(DELETE_DEPARTMENT);
 
   const handleDelete = (id: string) => {
-    setDepartments(departments.filter((dept) => dept.id !== id));
+    showModal(ModalId.DELETE_CONFIRM, {
+      title: "Delete Department",
+      message: "Are you sure you want to delete this department?",
+      onConfirm: async () => {
+        if (id) {
+          await deleteDepartment({
+            variables: { deleteDepartmentInput: { id } },
+          });
+          refetch();
+        }
+      },
+    });
   };
 
   const handleAdd = () => {
     showModal(ModalId.ADD_DEPARMENT, { refetch });
   };
 
-  console.log(data?.loadDepartments?.data?.departments);
+  const handleNextPage = () => {
+    const nextPage = page + 1;
+    fetchMore({
+      variables: {
+        pagination: { page: nextPage, limit },
+      },
+      updateQuery: (prevResult, { fetchMoreResult }) => {
+        if (!fetchMoreResult) return prevResult;
+        return {
+          loadDepartments: {
+            ...fetchMoreResult.loadDepartments,
+            data: {
+              ...fetchMoreResult.loadDepartments.data,
+              departments: [
+                ...prevResult.loadDepartments.data.departments,
+                ...fetchMoreResult.loadDepartments.data.departments,
+              ],
+            },
+          },
+        };
+      },
+    }).then(() => {
+      setPage(nextPage);
+    });
+  };
+
+  const handlePrevPage = () => {
+    if (page > 1) {
+      const prevPage = page - 1;
+      setPage(prevPage);
+      // For previous pages, we can just refetch since we likely have the data cached
+      refetch({ pagination: { page: prevPage, limit } });
+    }
+  };
+
+  const totalDepartments = data?.loadDepartments?.data?.total || 0;
+  const totalPages = Math.ceil(totalDepartments / limit);
 
   return (
     <Main>
@@ -151,6 +202,92 @@ const DashboardPage: React.FC = () => {
                 )}
               </tbody>
             </table>
+          </div>
+        </div>
+
+        {/* Pagination Controls */}
+        <div className="flex items-center justify-between border-t border-gray-200 bg-white px-4 py-3 sm:px-6">
+          <div className="flex flex-1 justify-between sm:hidden">
+            <button
+              onClick={handlePrevPage}
+              disabled={page === 1}
+              className="relative inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+            >
+              Previous
+            </button>
+            <button
+              onClick={handleNextPage}
+              disabled={page >= totalPages}
+              className="relative ml-3 inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+            >
+              Next
+            </button>
+          </div>
+          <div className="hidden sm:flex sm:flex-1 sm:items-center sm:justify-between">
+            <div>
+              <p className="text-sm text-gray-700">
+                Showing{" "}
+                <span className="font-medium">{(page - 1) * limit + 1}</span> to{" "}
+                <span className="font-medium">
+                  {Math.min(page * limit, totalDepartments)}
+                </span>{" "}
+                of <span className="font-medium">{totalDepartments}</span>{" "}
+                results
+              </p>
+            </div>
+            <div>
+              <nav
+                className="isolate inline-flex -space-x-px rounded-md shadow-sm"
+                aria-label="Pagination"
+              >
+                <button
+                  onClick={handlePrevPage}
+                  disabled={page === 1}
+                  className="relative inline-flex items-center rounded-l-md px-2 py-2 text-gray-400 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 focus:z-20 focus:outline-offset-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <span className="sr-only">Previous</span>
+                  <ChevronLeft className="h-5 w-5" aria-hidden="true" />
+                </button>
+                {/* Page numbers */}
+                {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                  let pageNum;
+                  if (totalPages <= 5) {
+                    pageNum = i + 1;
+                  } else if (page <= 3) {
+                    pageNum = i + 1;
+                  } else if (page >= totalPages - 2) {
+                    pageNum = totalPages - 4 + i;
+                  } else {
+                    pageNum = page - 2 + i;
+                  }
+
+                  return (
+                    <button
+                      key={pageNum}
+                      onClick={() => {
+                        setPage(pageNum);
+                        refetch({ pagination: { page: pageNum, limit } });
+                      }}
+                      className={`relative inline-flex items-center px-4 py-2 text-sm font-semibold ${
+                        page === pageNum
+                          ? "bg-indigo-600 text-white focus:z-20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
+                          : "text-gray-900 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 focus:z-20 focus:outline-offset-0"
+                      }`}
+                    >
+                      {pageNum}
+                    </button>
+                  );
+                })}
+                <button
+                  onClick={handleNextPage}
+                  disabled={page >= totalPages}
+                  className="relative inline-flex items-center rounded-r-md px-2 py-2 text-gray-400 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 focus:z-20 focus:outline-offset-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <span className="sr-only">Next</span>
+                  <ChevronRight className="h-5 w-5" aria-hidden="true" />
+                </button>
+              </nav>
+            </div>
           </div>
         </div>
       </div>

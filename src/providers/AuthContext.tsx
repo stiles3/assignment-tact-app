@@ -1,8 +1,10 @@
 "use client";
 import React, { createContext, useContext, useState, useEffect } from "react";
 
-import { gql, useQuery } from "@apollo/client";
+import { gql, useMutation, useQuery } from "@apollo/client";
 import Cookies from "js-cookie";
+import { useRouter } from "next/navigation";
+import DiceLoading from "@/lib/DiceLoader";
 
 interface AuthContextType {
   token: string;
@@ -31,8 +33,9 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const AuthProvider: React.FC<{
   children: React.ReactNode;
 }> = ({ children }) => {
-  const { data, loading, error } = useQuery(GET_USER);
-  const [user, setUser] = useState(null);
+  const router = useRouter();
+  const { data, loading } = useQuery(GET_USER);
+  const [user, setUser] = useState<any>(null);
   const [isAuth, setIsAuth] = useState(false);
   const [token, setToken] = useState<string>(() => {
     const storedToken = Cookies.get("token");
@@ -41,14 +44,18 @@ export const AuthProvider: React.FC<{
 
   useEffect(() => {
     if (data) {
-      setUser(data);
+      if (data?.getUser?.data?.id) {
+        setUser(data?.getUser?.data);
+      } else {
+        router.push("/login");
+      }
     }
   }, [data]);
 
   const updateToken = (newToken: string) => {
     setToken(newToken);
     Cookies.set("token", newToken);
-    // localStorage.setItem("token", newToken);
+
     setIsAuth(true);
   };
   const deleteToken = () => {
@@ -67,7 +74,13 @@ export const AuthProvider: React.FC<{
         setUser,
       }}
     >
-      {loading ? <div>Loading...</div> : children}
+      {loading ? (
+        <div className="w-full h-screen flex items-center justify-center">
+          <DiceLoading />
+        </div>
+      ) : (
+        children
+      )}
     </AuthContext.Provider>
   );
 };

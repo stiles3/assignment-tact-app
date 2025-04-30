@@ -4,18 +4,32 @@ import { Dialog, DialogBackdrop, DialogPanel } from "@headlessui/react";
 import { Button } from "../Buttons";
 import { LogOut, X } from "lucide-react";
 import { useModal } from "@/providers/ModalProvider";
+import { gql, useMutation } from "@apollo/client";
+import { useRouter } from "next/navigation";
 
 interface ModalComponentProps {
   modalId: string;
 }
 
+export const LOGOUT_USER = gql`
+  mutation LogoutUser {
+    logoutUser {
+      status
+      message
+    }
+  }
+`;
+
 const LogoutModal: FC<ModalComponentProps> = ({ modalId }) => {
+  const router = useRouter();
+  const [logoutMutation] = useMutation(LOGOUT_USER);
   const { modalStates, hideModal } = useModal();
   const isOpen = modalStates[modalId]?.isOpen;
 
   const logoutUser = async () => {
-    localStorage.removeItem("tokens");
-    window.location.replace("/auth/login");
+    await logoutMutation();
+    router.push("/login");
+    hideModal(modalId);
   };
 
   if (!isOpen) return null;
