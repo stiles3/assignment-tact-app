@@ -72,6 +72,7 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
     return (
       <Comp
         className={combinedClasses}
+        /* @ts-ignore */
         ref={asChild ? undefined : ref}
         disabled={loading || props.disabled}
         {...props}
